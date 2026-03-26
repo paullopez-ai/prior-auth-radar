@@ -99,16 +99,16 @@ Server Route Handler (app/api/optum/pa-status/route.ts)
 
 **Key design decisions:**
 - All external API calls are server-side only. Credentials never reach the browser.
-- The three-mode config (`NEXT_PUBLIC_APP_ENV`) switches the entire pipeline from mock fixtures to live APIs with a single env var change.
+- A **Mode Toggle** button in the header lets users switch between Mock and Sandbox mode at runtime without a page reload. The selected mode is passed to the server in API requests.
 - Claude analysis degrades gracefully — if the Anthropic API call fails, the server builds a fallback analysis from the raw Optum data rather than returning an error.
 
 ---
 
 ## Application Modes
 
-The app has three operating modes controlled by `NEXT_PUBLIC_APP_ENV`:
+The app starts in the mode set by `NEXT_PUBLIC_APP_ENV` (defaults to `mock`). Users can **switch between Mock and Sandbox mode at runtime** using the Mode Toggle button in the header — no page reload or env var change needed.
 
-### `mock` — Demo Mode (Default for Development)
+### `mock` — Demo Mode (Default)
 
 - **No authentication required.** The dashboard loads instantly.
 - All data comes from `lib/mock/` fixtures — pre-generated PA statuses and Claude analysis.
@@ -118,18 +118,11 @@ The app has three operating modes controlled by `NEXT_PUBLIC_APP_ENV`:
 
 ### `sandbox` — Optum Sandbox + Real Claude
 
-- **Login required.** Users authenticate at `/login` before accessing the dashboard.
+- **Login required** (when `NEXT_PUBLIC_APP_ENV=sandbox`). When toggling to Sandbox via the UI button in mock mode, the middleware bypass remains active — auth is only enforced when the env var is set to `sandbox`.
 - The Optum sandbox OAuth endpoint and GraphQL URL are used.
 - Claude API calls are real — actual analysis is generated from Optum responses.
 - A collapsible **Sandbox Dev Console** appears at the bottom of the page with timestamped diagnostic logs showing every step of the pipeline (token fetch, each PA query result, Claude timing).
 - See [Sandbox Limitation](#sandbox-limitation--important) below for critical details on what the Optum sandbox can and cannot return.
-
-### `production` — Live Optum API + Real Claude
-
-- **Login required.**
-- Uses production Optum API credentials.
-- Full authentication enforcement via middleware.
-- Intended for deployment with real payer data.
 
 ---
 
@@ -260,6 +253,7 @@ User clicks Refresh
 | Sort by field | `sortPAItems()` → re-render |
 | Expand PA row | Toggle `expandedPAs[id]` → swap collapsed/expanded component |
 | Change tab in expanded row | Set `activeTabs[id]` to `action` / `prediction` / `detail` / `raw` |
+| Switch Mock ↔ Sandbox | `handleModeChange()` → reset state, reload data |
 | Toggle dark/light mode | `next-themes` setTheme() → CSS variable swap |
 | Open sandbox console | Toggle collapse state → render `sandboxNarrative.logs[]` |
 
@@ -276,6 +270,7 @@ RootLayout
         ├── Header
         │   ├── TimingBadges (Parallel: Xms, Claude: Xs)
         │   ├── RefreshButton
+        │   ├── ModeToggle (Mock ↔ Sandbox switch)
         │   └── ThemeToggle
         ├── PAStatsBar (counts by priority, CMS violations, procedures at risk)
         ├── PASummaryPanel (macro Claude insights)
@@ -421,19 +416,28 @@ Copy `.env.example` to `.env.local` and fill in your values.
 
 ## Getting Started
 
+### Local Development (Mac / Linux / Windows)
+
 ```bash
-# Install dependencies
+# 1. Clone the repo
+git clone https://github.com/paullopez-ai/prior-auth-radar.git
+cd prior-auth-radar
+
+# 2. Copy the env template
+cp .env.local.example .env.local
+
+# 3. Install dependencies
 bun install
 
-# Run development server (Turbopack)
+# 4. Run development server (Turbopack)
 bun run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
 
-By default (`NEXT_PUBLIC_APP_ENV=mock`), the dashboard loads instantly with demo data — no credentials or API keys needed.
+By default (`NEXT_PUBLIC_APP_ENV=mock`), the dashboard loads instantly with demo data — **no credentials or API keys needed**. You can use the Mode Toggle in the header to switch between Mock and Sandbox views.
 
-To enable sandbox mode with real API calls, set `NEXT_PUBLIC_APP_ENV=sandbox` in `.env.local` and provide valid Optum and Anthropic credentials. See [Sandbox Limitation](#sandbox-limitation--important) before doing so.
+To connect to real APIs in sandbox mode, provide valid Optum and Anthropic credentials in `.env.local`. See [Sandbox Limitation](#sandbox-limitation--important) before doing so.
 
 ```bash
 # Production build
@@ -462,13 +466,44 @@ The default credentials (`admin` / `radar2026`) are intentionally weak placehold
 
 ## Deployment
 
-The application deploys on Vercel. Set all environment variables in the Vercel project settings (do not commit `.env.local`).
+### Vercel (Recommended)
 
-For production use with real Optum PA data:
-1. Register for the **Real Prior Auth/Referral Actions** API in the Optum developer marketplace
+The application is designed for Vercel deployment. Push to GitHub and import the repo in the [Vercel dashboard](https://vercel.com/new).
+
+**Minimum Vercel environment variable for mock mode (demo):**
+
+```
+NEXT_PUBLIC_APP_ENV=mock
+```
+
+That's it — mock mode requires no API keys. The dashboard works fully with synthetic data.
+
+**For sandbox mode, add these in Vercel dashboard → Settings → Environment Variables:**
+
+```
+NEXT_PUBLIC_APP_ENV=sandbox
+AUTH_USERNAME=admin
+AUTH_PASSWORD_HASH=<from scripts/generate-password-hash.mjs>
+AUTH_SECRET=<run: openssl rand -hex 32>
+OPTUM_CLIENT_ID=<from Optum marketplace>
+OPTUM_CLIENT_SECRET=<from Optum marketplace>
+OPTUM_AUTH_URL=https://idx.linkhealth.com/auth/realms/developer-platform/protocol/openid-connect/token
+OPTUM_GRAPHQL_URL=https://sandbox-apigw.optum.com/oihub/prior-auth/v1/graphql
+OPTUM_PROVIDER_TAX_ID=<your tax ID>
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+**Notes:**
+- Do **not** commit `.env.local` — all secrets go in the Vercel dashboard
+- The build command and output directory are auto-detected by Vercel (Next.js preset)
+- Node.js serverless functions are used for API routes (not Edge Runtime)
+
+### Production with Real Optum Data
+
+1. Register for the **Real Prior Auth/Referral Actions** API in the Optum marketplace
 2. Obtain production `OPTUM_CLIENT_ID`, `OPTUM_CLIENT_SECRET`, and the correct `OPTUM_GRAPHQL_URL`
-3. Update the GraphQL query in `lib/optum-pa-status.ts` if the Real Prior Auth/Referral Actions schema differs from the illustrative schema
-4. Set `NEXT_PUBLIC_APP_ENV=production`
+3. Update the GraphQL query in `lib/optum-pa-status.ts` if the schema differs
+4. Set `NEXT_PUBLIC_APP_ENV=sandbox` and provide all credentials
 5. Generate a strong `AUTH_SECRET` and `AUTH_PASSWORD_HASH` for production credentials
 
 ---
