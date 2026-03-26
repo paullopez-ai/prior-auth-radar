@@ -1,65 +1,219 @@
-import Image from "next/image";
+"use client"
 
-export default function Home() {
+import { useState, useEffect, useCallback } from 'react'
+import { ThemeToggle } from '@/components/theme-toggle'
+import { ModeToggle } from '@/components/mode-toggle'
+import { MockModeBanner } from '@/components/mock-mode-banner'
+import { SandboxModeBanner } from '@/components/sandbox-mode-banner'
+import { SandboxDisclosure } from '@/components/sandbox-disclosure'
+import { PAStatsBar } from '@/components/pa-stats-bar'
+import { PASummaryPanel } from '@/components/pa-summary-panel'
+import { PAFeedControls } from '@/components/pa-feed-controls'
+import { PAFeedTable } from '@/components/pa-feed-table'
+import { TimingBadges } from '@/components/timing-badges'
+import { RefreshButton } from '@/components/refresh-button'
+import { LoadingOverlay } from '@/components/loading-overlay'
+import { SandboxDevConsole } from '@/components/sandbox-dev-console'
+import { loadMockFeedData } from '@/lib/mock/mock-loader'
+import { sortPAItems, filterPAItems, getUniquePayers } from '@/lib/pa-utils'
+import type { PAFeedResult, PAStatusResult } from '@/types/optum.types'
+import type { ClaudePAAnalysis } from '@/types/claude.types'
+import type { SandboxNarrative } from '@/types/sandbox.types'
+import type { PAPriority, PAUrgencyType, PASortField, SortDirection } from '@/types/pa.types'
+
+type AppMode = 'mock' | 'sandbox'
+
+function getInitialMode(): AppMode {
+  const env = process.env.NEXT_PUBLIC_APP_ENV
+  if (env === 'sandbox') return 'sandbox'
+  return 'mock'
+}
+
+type FeedStatus = 'idle' | 'refreshing' | 'success' | 'partial_error' | 'total_error'
+
+export default function DashboardPage() {
+  const [mode, setMode] = useState<AppMode>(getInitialMode)
+  const [feedStatus, setFeedStatus] = useState<FeedStatus>('idle')
+  const [paItems, setPAItems] = useState<PAStatusResult[]>([])
+  const [paAnalysis, setPAAnalysis] = useState<ClaudePAAnalysis | null>(null)
+  const [timing, setTiming] = useState<PAFeedResult['timing'] | null>(null)
+
+  const isMock = mode === 'mock'
+  const isSandbox = mode === 'sandbox'
+
+  // Filters and sorting
+  const [sortField, setSortField] = useState<PASortField>('priority')
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
+  const [priorityFilter, setPriorityFilter] = useState<PAPriority | 'ALL'>('ALL')
+  const [payerFilter, setPayerFilter] = useState<string | 'ALL'>('ALL')
+  const [urgencyFilter, setUrgencyFilter] = useState<PAUrgencyType | 'ALL'>('ALL')
+
+  // Expansion state
+  const [expandedPAs, setExpandedPAs] = useState<Record<string, boolean>>({})
+  const [activeTabs, setActiveTabs] = useState<Record<string, 'action' | 'prediction' | 'detail' | 'raw'>>({})
+
+  // Loading
+  const [isLoading, setIsLoading] = useState(false)
+  const [loadingPhase, setLoadingPhase] = useState<'pa-status' | 'claude' | null>(null)
+
+  // Sandbox narrative
+  const [sandboxNarrative, setSandboxNarrative] = useState<SandboxNarrative | null>(null)
+
+  const handleModeChange = useCallback((newMode: AppMode) => {
+    setMode(newMode)
+    // Reset state on mode change
+    setPAItems([])
+    setPAAnalysis(null)
+    setTiming(null)
+    setFeedStatus('idle')
+    setSandboxNarrative(null)
+  }, [])
+
+  // Load mock data on mount or when switching to mock mode
+  useEffect(() => {
+    if (isMock) {
+      const data = loadMockFeedData()
+      setPAItems(data.paItems)
+      setPAAnalysis(data.paAnalysis)
+      setTiming(data.timing)
+      setFeedStatus('success')
+    }
+  }, [isMock])
+
+  const handleRefresh = useCallback(async () => {
+    setIsLoading(true)
+    setLoadingPhase('pa-status')
+    setFeedStatus('refreshing')
+
+    try {
+      const res = await fetch('/api/optum/pa-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode }),
+      })
+
+      if (!res.ok) {
+        throw new Error(`API error: ${res.status}`)
+      }
+
+      setLoadingPhase('claude')
+      const data = (await res.json()) as PAFeedResult & { sandboxNarrative?: SandboxNarrative }
+      setPAItems(data.paItems)
+      setPAAnalysis(data.paAnalysis)
+      setTiming(data.timing)
+      if (data.sandboxNarrative) setSandboxNarrative(data.sandboxNarrative)
+      setFeedStatus(data.errorCount > 0 ? 'partial_error' : 'success')
+    } catch {
+      setFeedStatus('total_error')
+    } finally {
+      setIsLoading(false)
+      setLoadingPhase(null)
+    }
+  }, [mode])
+
+  // Apply sorting and filtering
+  const filteredItems = filterPAItems(paItems, {
+    priority: priorityFilter,
+    scenario: 'ALL',
+    payerName: payerFilter,
+    urgencyType: urgencyFilter,
+  })
+  const sortedItems = sortPAItems(filteredItems, sortField, sortDirection)
+  const payers = getUniquePayers(paItems)
+
+  function toggleExpand(id: string) {
+    setExpandedPAs((prev) => ({ ...prev, [id]: !prev[id] }))
+  }
+
+  function changeTab(id: string, tab: 'action' | 'prediction' | 'detail' | 'raw') {
+    setActiveTabs((prev) => ({ ...prev, [id]: tab }))
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen flex flex-col">
+      <LoadingOverlay isLoading={isLoading} phase={loadingPhase} />
+
+      {/* Banners */}
+      <MockModeBanner isMock={isMock} />
+      <SandboxModeBanner isSandbox={isSandbox} />
+
+      {/* Header */}
+      <header className="border-b border-border px-6 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div>
+            <h1 className="font-display text-3xl font-bold">Prior Auth Radar</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              AI-powered PA management — {paItems.length} authorizations at a glance
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <TimingBadges timing={timing} />
+            <RefreshButton onClick={handleRefresh} isLoading={isLoading} />
+            <ModeToggle mode={mode} onModeChange={handleModeChange} />
+            <ThemeToggle />
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
+      </header>
+
+      {/* Main content */}
+      <main className="flex-1 px-6 py-6">
+        <div className="max-w-7xl mx-auto space-y-6">
+          {/* Stats bar */}
+          <PAStatsBar summary={paAnalysis?.paSummary ?? null} />
+
+          {/* Macro summary */}
+          <PASummaryPanel summary={paAnalysis?.paSummary ?? null} />
+
+          {/* Feed controls */}
+          <div className="flex items-center justify-between">
+            <PAFeedControls
+              sortField={sortField}
+              sortDirection={sortDirection}
+              priorityFilter={priorityFilter}
+              payerFilter={payerFilter}
+              urgencyFilter={urgencyFilter}
+              payers={payers}
+              onSortFieldChange={setSortField}
+              onSortDirectionChange={setSortDirection}
+              onPriorityFilterChange={setPriorityFilter}
+              onPayerFilterChange={setPayerFilter}
+              onUrgencyFilterChange={setUrgencyFilter}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            <span className="text-xs text-muted-foreground font-mono">
+              {sortedItems.length} of {paItems.length} PAs
+            </span>
+          </div>
+
+          {/* PA Feed Table */}
+          <div className="border border-border">
+            <PAFeedTable
+              items={sortedItems}
+              expandedPAs={expandedPAs}
+              activeTabs={activeTabs}
+              onToggleExpand={toggleExpand}
+              onTabChange={changeTab}
+            />
+          </div>
+
+          {feedStatus === 'total_error' && (
+            <div className="p-4 bg-destructive/10 border border-destructive/20 text-center text-sm text-destructive">
+              Failed to load PA data. Please try again.
+            </div>
+          )}
         </div>
       </main>
+
+      {/* Sandbox dev console */}
+      {isSandbox && sandboxNarrative && (
+        <div className="px-6 pb-6">
+          <div className="max-w-7xl mx-auto">
+            <SandboxDevConsole narrative={sandboxNarrative} />
+          </div>
+        </div>
+      )}
+
+      {/* Footer */}
+      <SandboxDisclosure />
     </div>
-  );
+  )
 }
