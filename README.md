@@ -460,7 +460,7 @@ node scripts/generate-password-hash.mjs
 
 The script prompts for a password and outputs a `saltHex.hashHex` string. Set this as `AUTH_PASSWORD_HASH` in `.env.local`.
 
-The default credentials (`admin` / `your_password`) are intentionally weak placeholder values. Replace them before deploying anywhere accessible outside localhost.
+
 
 ---
 
