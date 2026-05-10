@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
+import { Button } from '@/components/ui/button'
+import { HugeiconsIcon } from '@hugeicons/react'
+import { Logout03Icon } from '@hugeicons/core-free-icons'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { ModeToggle } from '@/components/mode-toggle'
 import { MockModeBanner } from '@/components/mock-mode-banner'
@@ -58,6 +61,11 @@ export default function DashboardPage() {
 
   // Sandbox narrative
   const [sandboxNarrative, setSandboxNarrative] = useState<SandboxNarrative | null>(null)
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST', redirect: 'follow' })
+    window.location.href = '/login'
+  }
 
   const handleModeChange = useCallback((newMode: AppMode) => {
     setMode(newMode)
@@ -151,6 +159,17 @@ export default function DashboardPage() {
             <RefreshButton onClick={handleRefresh} isLoading={isLoading} />
             <ModeToggle mode={mode} onModeChange={handleModeChange} />
             <ThemeToggle />
+            {!isMock && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={handleLogout}
+                title="Sign out"
+              >
+                <HugeiconsIcon icon={Logout03Icon} className="h-4 w-4" />
+              </Button>
+            )}
           </div>
         </div>
       </header>
