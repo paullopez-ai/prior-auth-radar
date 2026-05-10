@@ -67,7 +67,14 @@ export default function DashboardPage() {
     window.location.href = '/login'
   }
 
-  const handleModeChange = useCallback((newMode: AppMode) => {
+  const handleModeChange = useCallback(async (newMode: AppMode) => {
+    if (newMode === 'sandbox') {
+      const res = await fetch('/api/auth/check')
+      if (!res.ok) {
+        window.location.href = '/login?from=/'
+        return
+      }
+    }
     setMode(newMode)
     // Reset state on mode change
     setPAItems([])
