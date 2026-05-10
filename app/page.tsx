@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from 'react'
+import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { HugeiconsIcon } from '@hugeicons/react'
 import { Logout03Icon } from '@hugeicons/core-free-icons'
@@ -35,7 +36,13 @@ function getInitialMode(): AppMode {
 type FeedStatus = 'idle' | 'refreshing' | 'success' | 'partial_error' | 'total_error'
 
 export default function DashboardPage() {
-  const [mode, setMode] = useState<AppMode>(getInitialMode)
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const [mode, setMode] = useState<AppMode>(() => {
+    const urlMode = typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('mode') : null
+    if (urlMode === 'sandbox') return 'sandbox'
+    return getInitialMode()
+  })
   const [feedStatus, setFeedStatus] = useState<FeedStatus>('idle')
   const [paItems, setPAItems] = useState<PAStatusResult[]>([])
   const [paAnalysis, setPAAnalysis] = useState<ClaudePAAnalysis | null>(null)
@@ -67,11 +74,18 @@ export default function DashboardPage() {
     window.location.href = '/login'
   }
 
+  // Strip ?mode param from URL after it has been consumed on mount
+  useEffect(() => {
+    if (searchParams.get('mode')) {
+      router.replace('/', { scroll: false })
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleModeChange = useCallback(async (newMode: AppMode) => {
     if (newMode === 'sandbox') {
       const res = await fetch('/api/auth/check')
       if (!res.ok) {
-        window.location.href = '/login?from=/'
+        window.location.href = '/login?from=' + encodeURIComponent('/?mode=sandbox')
         return
       }
     }
