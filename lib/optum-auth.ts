@@ -1,3 +1,7 @@
+// SUPERSEDED (v2 AWS upgrade): Optum OAuth + PA status fetching now happen in
+// the Python backend's fetch_node (sandbox mode), ported from this logic. This
+// file is retained for reference and to preserve the original build history.
+
 let cachedToken: string | null = null
 let tokenExpiry: number = 0
 

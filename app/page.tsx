@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { HugeiconsIcon } from '@hugeicons/react'
@@ -27,6 +27,12 @@ import type { PAPriority, PAUrgencyType, PASortField, SortDirection } from '@/ty
 
 type AppMode = 'mock' | 'sandbox'
 
+// In Docker Compose / AWS this is set to "true" so every Refresh (and the
+// initial load) is routed through the backend regardless of mock vs sandbox,
+// guaranteeing a LangSmith trace. On Vercel it is unset, so mock mode loads
+// fixtures client-side and never touches the API route.
+const FORCE_BACKEND = process.env.NEXT_PUBLIC_FORCE_BACKEND === 'true'
+
 function getInitialMode(): AppMode {
   const env = process.env.NEXT_PUBLIC_APP_ENV
   if (env === 'sandbox') return 'sandbox'
@@ -35,7 +41,7 @@ function getInitialMode(): AppMode {
 
 type FeedStatus = 'idle' | 'refreshing' | 'success' | 'partial_error' | 'total_error'
 
-export default function DashboardPage() {
+function DashboardContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [mode, setMode] = useState<AppMode>(() => {
@@ -98,8 +104,11 @@ export default function DashboardPage() {
     setSandboxNarrative(null)
   }, [])
 
-  // Load mock data on mount or when switching to mock mode
+  // Load mock data on mount or when switching to mock mode.
+  // Skipped when FORCE_BACKEND is set — in that case the backend is the only
+  // data source and the auto-refresh effect below drives every load.
   useEffect(() => {
+    if (FORCE_BACKEND) return
     if (isMock) {
       const data = loadMockFeedData()
       setPAItems(data.paItems)
@@ -139,6 +148,15 @@ export default function DashboardPage() {
       setLoadingPhase(null)
     }
   }, [mode])
+
+  // When FORCE_BACKEND is set (Docker/AWS), every load goes through the backend
+  // so a LangSmith trace is always produced — including the initial mount and
+  // every mode switch.
+  useEffect(() => {
+    if (FORCE_BACKEND) {
+      handleRefresh()
+    }
+  }, [mode, handleRefresh])
 
   // Apply sorting and filtering
   const filteredItems = filterPAItems(paItems, {
@@ -255,5 +273,16 @@ export default function DashboardPage() {
       {/* Footer */}
       <SandboxDisclosure />
     </div>
+  )
+}
+
+// useSearchParams() requires a Suspense boundary during static prerender
+// (Next.js CSR bailout). Wrapping the dashboard keeps the page statically
+// renderable while the client component reads the URL on the client.
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardContent />
+    </Suspense>
   )
 }

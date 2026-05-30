@@ -1,3 +1,8 @@
+// SUPERSEDED (v2 AWS upgrade): the single direct Anthropic Claude call below is
+// no longer invoked. PA analysis now runs in the Python backend as a six-node
+// LangGraph workflow on Amazon Bedrock (see backend/app/agents/). This file is
+// retained for reference and to preserve the original build history.
+
 import type { PAStatusResponse } from '@/types/optum.types'
 import type { ClaudePAAnalysis } from '@/types/claude.types'
 import type { SyntheticPA } from '@/types/pa.types'

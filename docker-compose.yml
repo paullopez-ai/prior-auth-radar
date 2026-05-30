@@ -1,0 +1,70 @@
+# Local multi-service orchestration: postgres(pgvector) + backend + frontend.
+# `docker-compose up` brings up the full architecture demo. AWS credentials with
+# Bedrock access and a LangSmith API key are read from the environment (or an
+# .env file alongside this compose file).
+#
+# Note: the top-level `version:` key is intentionally omitted — it is obsolete in
+# Compose v2.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: pa_agent
+      POSTGRES_USER: pa_user
+      POSTGRES_PASSWORD: pa_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pa_user -d pa_agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://pa_user:pa_password@postgres:5432/pa_agent
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      - BEDROCK_INFERENCE_MODEL=${BEDROCK_INFERENCE_MODEL:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+      - BEDROCK_EMBEDDING_MODEL=${BEDROCK_EMBEDDING_MODEL:-amazon.titan-embed-text-v1}
+      - LANGCHAIN_TRACING_V2=true
+      - LANGCHAIN_API_KEY=${LANGCHAIN_API_KEY}
+      - LANGCHAIN_PROJECT=${LANGCHAIN_PROJECT:-prior-auth-radar-aws}
+      - APP_ENV=${APP_ENV:-mock}
+      # Optum sandbox (only used when APP_ENV=sandbox)
+      - OPTUM_CLIENT_ID=${OPTUM_CLIENT_ID:-}
+      - OPTUM_CLIENT_SECRET=${OPTUM_CLIENT_SECRET:-}
+      - OPTUM_AUTH_URL=${OPTUM_AUTH_URL:-}
+      - OPTUM_GRAPHQL_URL=${OPTUM_GRAPHQL_URL:-}
+      - OPTUM_PROVIDER_TAX_ID=${OPTUM_PROVIDER_TAX_ID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      args:
+        # NEXT_PUBLIC_* are baked into the client bundle at build time.
+        NEXT_PUBLIC_APP_ENV: ${APP_ENV:-mock}
+        NEXT_PUBLIC_FORCE_BACKEND: "true"
+    ports:
+      - "3000:3000"
+    environment:
+      # Server-side only (not inlined): the proxy reads BACKEND_URL at runtime.
+      - BACKEND_URL=http://backend:8000
+      - AUTH_USERNAME=${AUTH_USERNAME:-admin}
+      - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH:-}
+      - AUTH_SECRET=${AUTH_SECRET:-}
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:

@@ -6,6 +6,7 @@ An AI-powered healthcare dashboard for medical practices to intelligently track,
 
 ## Table of Contents
 
+- [v2 — AWS-Native Architecture Upgrade](#v2--aws-native-architecture-upgrade)
 - [What It Does](#what-it-does)
 - [How It Works](#how-it-works)
 - [Architecture Overview](#architecture-overview)
@@ -21,6 +22,119 @@ An AI-powered healthcare dashboard for medical practices to intelligently track,
 - [Getting Started](#getting-started)
 - [Password Management](#password-management)
 - [Deployment](#deployment)
+
+---
+
+## v2 — AWS-Native Architecture Upgrade
+
+The original app (v1) made a **single direct Anthropic Claude call** from a Next.js
+server route. v2 keeps that frontend **byte-for-byte unchanged** and moves all
+inference server-side into a **Python FastAPI + LangGraph** service running on
+**Amazon Bedrock**, with a **pgvector RAG layer** and **LangSmith** trace
+observability. The API response shape is identical, so the dashboard never knows
+the difference.
+
+Two demo surfaces from one codebase:
+
+- **Vercel = the product demo.** Mock mode loads fixtures client-side and never
+  calls the backend (no AWS or LangSmith needed).
+- **Docker Compose / AWS = the architecture demo.** `NEXT_PUBLIC_FORCE_BACKEND=true`
+  routes every Refresh through the backend so a six-node LangSmith trace is always
+  produced.
+
+### v1 → v2: single call vs. six-node state machine
+
+```
+v1 (original)                         v2 (AWS upgrade)
+─────────────                         ────────────────
+Next.js route                         Next.js route (thin proxy)
+   │                                      │  POST /api/analyze
+   └─ one Claude call ─► JSON             ▼
+                                       FastAPI + LangGraph
+                                          fetch ─► priority ─► rag ─► cms ─► prediction ─► summary ─► END
+                                            │         │          │       │        │            │
+                                            │      Bedrock    Bedrock   pure    Bedrock      Bedrock
+                                            │     (Claude)    (Titan)   logic   (Claude)     (Claude)
+                                            │                    │
+                                       mock/sandbox        pgvector RAG
+                                       data source        (CMS + payer criteria)
+   every step is a named LangSmith span: tokens, latency, retrieved chunks
+```
+
+### AWS stack decisions
+
+| Service | Replaces from v1 | Why this over the obvious alternative |
+|---|---|---|
+| **Amazon Bedrock** (Claude 3.5 Sonnet) | Direct Anthropic API | Keeps model traffic inside the customer's AWS account/VPC with IAM-scoped access — the posture a health insurer requires. No third-party API key in the app. |
+| **LangGraph state machine** (6 nodes) | One large prompt call | Step-level observability, failure isolation, per-step cost attribution, and room for node-level parallelism. |
+| **pgvector on Aurora** | Hardcoded rules in the prompt | CMS/payer criteria become data, updatable without a deploy. Chosen over OpenSearch to avoid a second datastore — Aurora already in the VPC. |
+| **ECS Fargate** | Vercel serverless | Long-running container workloads, VPC networking, IAM task roles. Chosen over Lambda to avoid cold-start/timeout limits on multi-LLM-call workflows. |
+| **Aurora Serverless v2** | (none) | pgvector + scale-to-low-ACU economics. Chosen over standard RDS for demo-friendly autoscaling. |
+| **LangSmith** | Sandbox dev console | Zero-instrumentation traces — every node, token count, latency, and retrieved chunk is visible. The interview centerpiece. |
+
+### What this demonstrates
+
+LangGraph state-machine design · RAG with pgvector · multi-service Docker
+architecture · Terraform IaC (VPC/ECS/Aurora/Secrets) · LangSmith observability ·
+backward-compatible API contracts (zero frontend rewrite).
+
+### Local setup (full stack)
+
+Requires Docker Desktop, AWS credentials with Bedrock access, and a LangSmith API key.
+
+```bash
+# 1. Clone
+git clone https://github.com/paullopez-ai/prior-auth-radar.git
+cd prior-auth-radar
+
+# 2. Provide credentials to Docker Compose (env or an .env file beside compose):
+export AWS_ACCESS_KEY_ID=...        AWS_SECRET_ACCESS_KEY=...
+export AWS_DEFAULT_REGION=us-east-1 LANGCHAIN_API_KEY=...
+
+# 3. Bring up postgres(pgvector) + backend + frontend
+docker-compose up --build
+
+# 4. Open the dashboard
+open http://localhost:3000          # loads in mock mode via the backend
+
+# 5. Open LangSmith → project "prior-auth-radar-aws" → view the six-node trace
+```
+
+The backend seeds the pgvector store from `backend/app/rag/seed/` on first
+startup (idempotent). `GET http://localhost:8000/health` returns
+`{"status":"ok","service":"pa-agent"}`.
+
+### Backend layout
+
+```
+backend/
+├── app/
+│   ├── main.py                 FastAPI app + RAG seed on startup
+│   ├── api/routes/analyze.py   POST /api/analyze  →  PAFeedResult
+│   ├── agents/
+│   │   ├── pa_agent.py         LangGraph StateGraph (6 nodes)
+│   │   ├── state.py            PAAgentState
+│   │   ├── prompts.py          per-node Bedrock prompts
+│   │   ├── assembly.py         builds the PAFeedResult contract
+│   │   ├── fallbacks.py        deterministic degradation if Bedrock is down
+│   │   └── nodes/              fetch, priority, rag, cms, prediction, summary
+│   ├── rag/                    Bedrock embeddings, pgvector retriever, seed
+│   └── data/                   Python port of the PA items + status fixtures
+└── Dockerfile, requirements.txt, .env.example
+```
+
+### Terraform deployment
+
+```bash
+cd infrastructure
+cp terraform.tfvars.example terraform.tfvars   # edit
+terraform init && terraform validate && terraform plan
+# terraform apply   # optional — see infrastructure/README.md
+```
+
+Provisions VPC, ECS Fargate (frontend + backend behind an ALB), Aurora
+Serverless v2 with pgvector, Secrets Manager, ECR, and least-privilege IAM task
+roles (`bedrock:InvokeModel`). See [`infrastructure/README.md`](infrastructure/README.md).
 
 ---
 
@@ -510,6 +624,8 @@ ANTHROPIC_API_KEY=sk-ant-...
 
 ## Technology Stack
 
+### Frontend (unchanged across v1 → v2)
+
 | Layer | Technology |
 |-------|-----------|
 | Framework | Next.js 16 (App Router, Turbopack) |
@@ -517,8 +633,20 @@ ANTHROPIC_API_KEY=sk-ant-...
 | Styling | Tailwind CSS v4, shadcn/ui |
 | Fonts | Geist Sans, Geist Mono, Raleway, Playfair Display |
 | Animations | Framer Motion |
-| AI | Anthropic Claude Sonnet 4.6 |
 | Auth | Scrypt + HMAC-SHA256 session tokens |
 | Package Manager | Bun |
 | Icons | HugeIcons |
 | Theme | next-themes (dark mode by default) |
+
+### v1 vs v2 (AWS upgrade)
+
+| Layer | v1 (Original) | v2 (AWS Upgrade) |
+|---|---|---|
+| AI Inference | Anthropic Claude (direct) | Amazon Bedrock (Claude 3.5 Sonnet) |
+| Agent Orchestration | Single prompt call | LangGraph state machine (6 nodes) |
+| RAG / Vector Store | None | pgvector on PostgreSQL / Aurora |
+| Embeddings | None | Amazon Bedrock Titan |
+| Backend Runtime | Next.js serverless route | Python FastAPI + LangGraph |
+| Observability | Sandbox Dev Console | LangSmith trace dashboard |
+| Infrastructure | Vercel serverless | Docker Compose / ECS Fargate |
+| IaC | None | Terraform (VPC, ECS, Aurora, Secrets) |

@@ -1,3 +1,7 @@
+// SUPERSEDED (v2 AWS upgrade): this Optum PA-status GraphQL fetch is no longer
+// called from the frontend. The backend's fetch_node performs the equivalent
+// query in sandbox mode. Retained for reference and build history.
+
 import type { PAStatusResponse, PAStatusGraphQLResponse } from '@/types/optum.types'
 
 const PA_STATUS_QUERY = `

@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars and fill in. terraform.tfvars is gitignored.
+
+aws_region   = "us-east-1"
+project_name = "prior-auth-radar"
+environment  = "demo"
+
+# ECR image URIs (populated after the first docker push to the repos that this
+# stack creates). On the very first apply, point these at any placeholder image
+# or apply the ECS module after pushing.
+frontend_image = "<account>.dkr.ecr.us-east-1.amazonaws.com/prior-auth-radar-demo-frontend:latest"
+backend_image  = "<account>.dkr.ecr.us-east-1.amazonaws.com/prior-auth-radar-demo-backend:latest"
+
+# LangSmith API key (stored in Secrets Manager).
+langsmith_api_key = ""
+
+app_env = "mock"

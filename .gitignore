@@ -41,6 +41,21 @@ yarn-error.log*
 # vercel
 .vercel
 
+# python (backend service)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
