@@ -1,5 +1,8 @@
 # Prior Authorization Radar
 
+> **Live demo:** https://prior-auth-radar.vercel.app/
+> To see a live working demo, contact me.
+
 An AI-powered healthcare dashboard for medical practices to intelligently track, prioritize, and act on prior authorization (PA) requests. Built with Next.js 16, Claude AI (Sonnet 4.6), and the Optum Real API sandbox.
 
 ---
