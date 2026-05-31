@@ -321,14 +321,18 @@ Authentication is enforced by `middleware.ts` in sandbox and production modes. M
 - Default expiry: 24 hours (configurable via `SESSION_EXPIRY_HOURS`)
 - Middleware verifies signature on every protected request; expired tokens redirect to `/login`
 
-### Default Credentials
+### Credentials
 
-```
-Username: admin
-Password: your_password
-```
+This project ships with **no default credentials**. Mock mode requires no login. For sandbox/production, set your own `AUTH_USERNAME` and generate an `AUTH_PASSWORD_HASH` and `AUTH_SECRET` before deploying. See [Password Management](#password-management).
 
-These are placeholder credentials for development and demos. Change `AUTH_USERNAME` and generate a new `AUTH_PASSWORD_HASH` before any public deployment. See [Password Management](#password-management).
+### Getting Optum API Access
+
+To call the real Optum APIs (sandbox or production), register for Optum developer access:
+
+1. Sign up at the **Optum Developer Marketplace**: https://marketplace.optum.com
+2. Create an application and subscribe to the Prior Authorization API for **sandbox** access.
+3. Optum issues your `OPTUM_CLIENT_ID`, `OPTUM_CLIENT_SECRET`, the token/API URLs, and your provider tax ID.
+4. Configure those in `backend/.env` (see `backend/.env.example`) — **this repository ships no credentials or tax IDs**.
 
 ---
 
@@ -508,7 +512,7 @@ prior-auth-radar/
 NEXT_PUBLIC_APP_ENV=mock
 
 # Authentication
-AUTH_USERNAME=
+AUTH_USERNAME=<your-username>
 AUTH_PASSWORD_HASH=<saltHex.hashHex from generate-password-hash.mjs>
 AUTH_SECRET=<random 32+ byte hex string>
 
@@ -599,7 +603,7 @@ That's it — mock mode requires no API keys. The dashboard works fully with syn
 
 ```
 NEXT_PUBLIC_APP_ENV=sandbox
-AUTH_USERNAME=
+AUTH_USERNAME=<your-username>
 AUTH_PASSWORD_HASH=<from scripts/generate-password-hash.mjs>
 AUTH_SECRET=<run: openssl rand -hex 32>
 OPTUM_CLIENT_ID=<from Optum marketplace>

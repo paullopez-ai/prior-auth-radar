@@ -113,9 +113,6 @@ export default function LoginPage() {
           <LoginForm />
         </Suspense>
 
-        <p className="text-center text-xs text-muted-foreground">
-          Default credentials: <span className="font-mono">admin</span> / <span className="font-mono">your_password</span> — change before hosting
-        </p>
       </div>
     </main>
   )

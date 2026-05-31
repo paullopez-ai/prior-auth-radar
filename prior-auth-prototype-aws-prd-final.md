@@ -416,7 +416,7 @@ services:
       - NEXT_PUBLIC_APP_ENV=${APP_ENV:-mock}
       - NEXT_PUBLIC_FORCE_BACKEND=true
       - BACKEND_URL=http://backend:8000
-      - AUTH_USERNAME=
+      - AUTH_USERNAME=${AUTH_USERNAME}
       - AUTH_PASSWORD_HASH=${AUTH_PASSWORD_HASH}
       - AUTH_SECRET=${AUTH_SECRET}
     depends_on:
