@@ -73,7 +73,7 @@ Next.js route                         Next.js route (thin proxy)
 | **pgvector on Aurora** | Hardcoded rules in the prompt | CMS/payer criteria become data, updatable without a deploy. Chosen over OpenSearch to avoid a second datastore — Aurora already in the VPC. |
 | **ECS Fargate** | Vercel serverless | Long-running container workloads, VPC networking, IAM task roles. Chosen over Lambda to avoid cold-start/timeout limits on multi-LLM-call workflows. |
 | **Aurora Serverless v2** | (none) | pgvector + scale-to-low-ACU economics. Chosen over standard RDS for demo-friendly autoscaling. |
-| **LangSmith** | Sandbox dev console | Zero-instrumentation traces — every node, token count, latency, and retrieved chunk is visible. The interview centerpiece. |
+| **LangSmith** | Sandbox dev console | Zero-instrumentation traces — every node, token count, latency, and retrieved chunk is visible. Full observability across every LLM call. |
 
 ### What this demonstrates
 
